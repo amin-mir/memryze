@@ -4,11 +4,8 @@ use tokio_postgres::NoTls;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let (client, connection) = tokio_postgres::connect(
-        "host=localhost user=postgres password=pswd dbname=memryze",
-        NoTls,
-    )
-    .await?;
+    let (client, connection) =
+        tokio_postgres::connect("postgres://postgres:pswd@localhost:5432/memryze", NoTls).await?;
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
