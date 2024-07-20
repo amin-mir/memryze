@@ -1,18 +1,15 @@
-use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context;
 use clap::Parser;
-use postcard::{from_bytes, to_slice};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-
-use memryze::Message;
 use tokio_postgres::{Client, NoTls};
 
+use memryze::{Message, Protocol};
+
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version)]
 struct Args {
     #[arg(short, long, default_value = "127.0.0.1:8080")]
     addr: String,
@@ -26,7 +23,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     let (pg_client, pg_conn) = tokio_postgres::connect(&args.pg_uri, NoTls).await?;
@@ -59,10 +56,10 @@ async fn handle(
 ) -> anyhow::Result<()> {
     println!("handling peer {addr}");
 
-    let mut in_buf = vec![0; 2048];
-    let mut out_buf = vec![0; 2048];
+    let mut prot = Protocol::new(2048);
 
-    let first_msg = read_msg(&mut stream, &mut in_buf)
+    let first_msg = prot
+        .read_msg(&mut stream)
         .await
         .context("error reading the first message")?;
 
@@ -72,7 +69,8 @@ async fn handle(
 
     println!("client handshake version: {version}");
 
-    write_msg(&mut stream, first_msg, &mut out_buf).await?;
+    let handshake_reply = Message::Handshake { version };
+    prot.write_msg(&mut stream, &handshake_reply).await?;
 
     // TODO: wrap pg_client in a struct that prepares all the statements at
     // the beginning so that we don't have to prepare separatly in each client.
@@ -81,33 +79,17 @@ async fn handle(
         .await?;
 
     loop {
-        let msg = read_msg(&mut stream, &mut in_buf).await?;
+        let msg = prot.read_msg(&mut stream).await?;
 
         match msg {
             Message::AddQA { q, a } => {
                 // TODO: return internal server error if the query fails.
                 pg_client.execute(&insert_qa_stmt, &[&q, &a]).await?;
-                write_msg(&mut stream, Message::AddQAResp, &mut out_buf).await?;
+                prot.write_msg(&mut stream, &Message::AddQAResp).await?;
             }
             msg => {
                 anyhow::bail!("client sent wrong message: {:?}", msg);
             }
         }
     }
-}
-
-// TODO: create a struct that takes ownership of read/write buffers
-// and picks the in/out correctly based on read/write.
-async fn read_msg<'a>(stream: &mut TcpStream, buf: &'a mut [u8]) -> anyhow::Result<Message<'a>> {
-    let n = stream.read(buf).await?;
-    if n == 0 {
-        anyhow::bail!("client closed the connection");
-    }
-
-    from_bytes(&buf[0..n]).map_err(Into::into)
-}
-
-async fn write_msg(stream: &mut TcpStream, msg: Message<'_>, buf: &mut [u8]) -> anyhow::Result<()> {
-    let used = to_slice(&msg, buf)?;
-    stream.write_all(used).await.map_err(Into::into)
 }

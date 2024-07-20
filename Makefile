@@ -10,3 +10,12 @@ run-psql:
 stop-postgres:
 	docker kill memryze-pg
 	docker rm memryze-pg
+
+init-db:
+	cargo run --bin db
+
+run-memryze:
+	cargo run --bin memryze
+
+run-client:
+	cargo run --bin client
