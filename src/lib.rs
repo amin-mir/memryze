@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tracing::trace;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Message<'a> {
@@ -20,15 +21,17 @@ pub struct Protocol {
 impl Protocol {
     pub fn new(cap: usize) -> Self {
         Self {
-            in_buf: Vec::with_capacity(cap),
-            out_buf: Vec::with_capacity(cap),
+            in_buf: vec![0; cap],
+            out_buf: vec![0; cap],
         }
     }
     pub async fn read_msg(&mut self, stream: &mut TcpStream) -> anyhow::Result<Message> {
         let n = stream.read(&mut self.in_buf).await?;
         if n == 0 {
-            anyhow::bail!("client closed the connection");
+            anyhow::bail!("Peer closed the connection");
         }
+
+        trace!(hex = hex(&self.in_buf[0..n]), "Received message");
 
         postcard::from_bytes(&self.in_buf[0..n]).map_err(Into::into)
     }
@@ -41,4 +44,12 @@ impl Protocol {
         let used = postcard::to_slice(msg, &mut self.out_buf)?;
         stream.write_all(used).await.map_err(Into::into)
     }
+}
+
+fn hex(data: &[u8]) -> String {
+    let mut hex = String::new();
+    for byte in data {
+        hex.push_str(&format!("0x{:02X} ", byte));
+    }
+    hex
 }

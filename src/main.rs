@@ -5,6 +5,8 @@ use anyhow::Context;
 use clap::Parser;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_postgres::{Client, NoTls};
+use tracing::{error, info, info_span, Instrument};
+use tracing_subscriber::EnvFilter;
 
 use memryze::{Message, Protocol};
 
@@ -26,12 +28,19 @@ struct Args {
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env().add_directive("tokio_postgres=error".parse()?),
+        )
+        .with_target(true)
+        .init();
+
     let (pg_client, pg_conn) = tokio_postgres::connect(&args.pg_uri, NoTls).await?;
     let pg_client = Arc::new(pg_client);
 
     tokio::spawn(async move {
         if let Err(e) = pg_conn.await {
-            eprintln!("connection error: {}", e);
+            error!("connection error: {}", e);
         }
     });
 
@@ -41,33 +50,36 @@ async fn main() -> anyhow::Result<()> {
         let (stream, addr) = listener.accept().await?;
 
         let pg_client = pg_client.clone();
-        tokio::spawn(async move {
-            if let Err(err) = handle(stream, addr, pg_client).await {
-                println!("Error handling the connection: {}", err);
+        tokio::spawn(
+            async move {
+                if let Err(err) = handle(stream, addr, pg_client).await {
+                    error!(%addr, ?err);
+                }
             }
-        });
+            .instrument(info_span!("handle")),
+        );
     }
 }
 
 async fn handle(
     mut stream: TcpStream,
-    addr: SocketAddr,
+    _addr: SocketAddr,
     pg_client: Arc<Client>,
 ) -> anyhow::Result<()> {
-    println!("handling peer {addr}");
+    info!("handling peer");
 
     let mut prot = Protocol::new(2048);
 
     let first_msg = prot
         .read_msg(&mut stream)
         .await
-        .context("error reading the first message")?;
+        .context("Error reading the first message")?;
 
     let Message::Handshake { version } = first_msg else {
         anyhow::bail!("First message was not handshake");
     };
 
-    println!("client handshake version: {version}");
+    info!(version, "Client handshake received");
 
     let handshake_reply = Message::Handshake { version };
     prot.write_msg(&mut stream, &handshake_reply).await?;
@@ -83,12 +95,14 @@ async fn handle(
 
         match msg {
             Message::AddQA { q, a } => {
-                // TODO: return internal server error if the query fails.
-                pg_client.execute(&insert_qa_stmt, &[&q, &a]).await?;
+                if let Err(err) = pg_client.execute(&insert_qa_stmt, &[&q, &a]).await {
+                    error!(?err, "Error inserting QA");
+                    prot.write_msg(&mut stream, &Message::InternalError).await?;
+                }
                 prot.write_msg(&mut stream, &Message::AddQAResp).await?;
             }
             msg => {
-                anyhow::bail!("client sent wrong message: {:?}", msg);
+                anyhow::bail!("Client sent wrong message: {:?}", msg);
             }
         }
     }
