@@ -4,10 +4,11 @@ use std::sync::Arc;
 use anyhow::Context;
 use clap::Parser;
 use tokio::net::{TcpListener, TcpStream};
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::NoTls;
 use tracing::{error, info, info_span, Instrument};
 use tracing_subscriber::EnvFilter;
 
+use memryze::db::PgClient;
 use memryze::{Message, Protocol};
 
 #[derive(Parser, Debug)]
@@ -36,13 +37,15 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let (pg_client, pg_conn) = tokio_postgres::connect(&args.pg_uri, NoTls).await?;
-    let pg_client = Arc::new(pg_client);
 
     tokio::spawn(async move {
         if let Err(e) = pg_conn.await {
             error!("connection error: {}", e);
         }
     });
+
+    let pg_client = PgClient::prepare(pg_client).await?;
+    let pg_client = Arc::new(pg_client);
 
     let listener = TcpListener::bind(args.addr).await?;
 
@@ -53,10 +56,10 @@ async fn main() -> anyhow::Result<()> {
         tokio::spawn(
             async move {
                 if let Err(err) = handle(stream, addr, pg_client).await {
-                    error!(%addr, ?err);
+                    error!(?err);
                 }
             }
-            .instrument(info_span!("handle")),
+            .instrument(info_span!("handle", %addr)),
         );
     }
 }
@@ -64,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
 async fn handle(
     mut stream: TcpStream,
     _addr: SocketAddr,
-    pg_client: Arc<Client>,
+    pg_client: Arc<PgClient>,
 ) -> anyhow::Result<()> {
     info!("handling peer");
 
@@ -84,18 +87,12 @@ async fn handle(
     let handshake_reply = Message::Handshake { version };
     prot.write_msg(&mut stream, &handshake_reply).await?;
 
-    // TODO: wrap pg_client in a struct that prepares all the statements at
-    // the beginning so that we don't have to prepare separatly in each client.
-    let insert_qa_stmt = pg_client
-        .prepare("INSERT INTO qa (q, a) VALUES ($1, $2)")
-        .await?;
-
     loop {
         let msg = prot.read_msg(&mut stream).await?;
 
         match msg {
             Message::AddQA { q, a } => {
-                if let Err(err) = pg_client.execute(&insert_qa_stmt, &[&q, &a]).await {
+                if let Err(err) = pg_client.insert_qa(&q, &a).await {
                     error!(?err, "Error inserting QA");
                     prot.write_msg(&mut stream, &Message::InternalError).await?;
                 }

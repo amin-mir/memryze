@@ -3,6 +3,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::trace;
 
+pub mod db;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Message<'a> {
     Handshake { version: u8 },
