@@ -56,6 +56,7 @@ async fn main() -> anyhow::Result<()> {
         let pg_client = pg_client.clone();
         tokio::spawn(
             async move {
+                // TODO: Move protocol::Error to lib and handle StreamClosed properly here.
                 if let Err(err) = handle(stream, addr, pg_client).await {
                     error!(?err);
                 }
@@ -105,13 +106,14 @@ async fn handle(
             Message::GetQuiz => {
                 match pg_client.get_quiz(&mut qas).await {
                     Ok(n) => {
-                        // NOTE: what would happen if n == 0?
+                        // TODO: what would happen if n == 0?
+                        info!(count = n, len = qas.len(), qas = ?&qas[0..n], "fetched qas from db");
                         let qas_bytes = prot::ser_slice(&qas[0..n], &mut sec_out_buf)?;
                         prot::write_msg(
                             &mut stream,
                             &mut prim_out_buf,
                             &Message::Quiz {
-                                count: qas.len() as u16,
+                                count: n as u16,
                                 qas_bytes,
                             },
                         )

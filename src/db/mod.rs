@@ -46,16 +46,6 @@ impl PgClient {
         let params: [&str; 0] = [];
         let row_iter = self.client.query_raw(&self.get_quiz_stmt, params).await?;
 
-        // // Resize the qas so that it matches the rows len. This could help us reuse
-        // // the memory allocated for previous quiz.
-        // qas.resize_with(rows.len(), Default::default);
-        // for i in 0..rows.len() {
-        //     qas[i].q.clear();
-        //     qas[i].q.push_str(rows[i].get(1));
-        //     qas[i].a.clear();
-        //     qas[i].a.push_str(rows[i].get(2));
-        // }
-
         let mut row_iter = pin!(row_iter);
 
         let mut i = 0;
