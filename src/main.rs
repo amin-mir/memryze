@@ -9,7 +9,8 @@ use tracing::{error, info, info_span, Instrument};
 use tracing_subscriber::EnvFilter;
 
 use memryze::db::PgClient;
-use memryze::{Message, Protocol};
+use memryze::protocol as prot;
+use memryze::{Message, QA};
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -71,10 +72,11 @@ async fn handle(
 ) -> anyhow::Result<()> {
     info!("handling peer");
 
-    let mut prot = Protocol::new(2048);
+    let mut in_buf = vec![0u8; 512];
+    let mut prim_out_buf = vec![0u8; 512];
+    let mut sec_out_buf = vec![0u8; 2048];
 
-    let first_msg = prot
-        .read_msg(&mut stream)
+    let first_msg = prot::read_msg(&mut stream, &mut in_buf)
         .await
         .context("Error reading the first message")?;
 
@@ -85,18 +87,43 @@ async fn handle(
     info!(version, "Client handshake received");
 
     let handshake_reply = Message::Handshake { version };
-    prot.write_msg(&mut stream, &handshake_reply).await?;
+    prot::write_msg(&mut stream, &mut prim_out_buf, &handshake_reply).await?;
 
+    let mut qas: Vec<QA> = vec![QA::default(); 20];
     loop {
-        let msg = prot.read_msg(&mut stream).await?;
+        let msg = prot::read_msg(&mut stream, &mut in_buf).await?;
 
         match msg {
             Message::AddQA { q, a } => {
                 if let Err(err) = pg_client.insert_qa(&q, &a).await {
                     error!(?err, "Error inserting QA");
-                    prot.write_msg(&mut stream, &Message::InternalError).await?;
+                    prot::write_msg(&mut stream, &mut prim_out_buf, &Message::InternalError)
+                        .await?;
                 }
-                prot.write_msg(&mut stream, &Message::AddQAResp).await?;
+                prot::write_msg(&mut stream, &mut prim_out_buf, &Message::AddQAResp).await?;
+            }
+            Message::GetQuiz => {
+                match pg_client.get_quiz(&mut qas).await {
+                    Ok(n) => {
+                        // NOTE: what would happen if n == 0?
+                        let qas_bytes = prot::ser_slice(&qas[0..n], &mut sec_out_buf)?;
+                        prot::write_msg(
+                            &mut stream,
+                            &mut prim_out_buf,
+                            &Message::Quiz {
+                                count: qas.len() as u16,
+                                qas_bytes,
+                            },
+                        )
+                        .await?;
+                    }
+                    Err(err) => {
+                        error!(?err, "Error fetching a quiz");
+                        prot::write_msg(&mut stream, &mut prim_out_buf, &Message::InternalError)
+                            .await?;
+                        continue;
+                    }
+                };
             }
             msg => {
                 anyhow::bail!("Client sent wrong message: {:?}", msg);
