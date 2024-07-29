@@ -1,45 +1,12 @@
-use std::fmt::{Debug, Display};
-use std::io::{self, ErrorKind};
+use std::fmt::Debug;
+use std::io::ErrorKind;
 
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::trace;
 
-use crate::{hex, Message};
-
-type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug)]
-pub enum Error {
-    Io(io::Error),
-    StreamClosed,
-    SerDeser(postcard::Error),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::Io(err) => write!(f, "I/O error: {}", err),
-            Error::StreamClosed => write!(f, "Peer closed the stream"),
-            Error::SerDeser(err) => write!(f, "(de)serializing error: {}", err),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Error::Io(err)
-    }
-}
-
-impl From<postcard::Error> for Error {
-    fn from(err: postcard::Error) -> Self {
-        Error::SerDeser(err)
-    }
-}
+use crate::{Error, Message, Result};
 
 pub async fn read_msg<'a>(stream: &mut TcpStream, to_buf: &'a mut [u8]) -> Result<Message<'a>> {
     let n = stream.read(to_buf).await?;
@@ -47,7 +14,7 @@ pub async fn read_msg<'a>(stream: &mut TcpStream, to_buf: &'a mut [u8]) -> Resul
         return Err(Error::StreamClosed);
     }
 
-    trace!(hex = hex(&to_buf[0..n]), "Received message");
+    trace!(hex = crate::hex(&to_buf[0..n]), "Received message");
 
     postcard::from_bytes(&to_buf[0..n]).map_err(Into::into)
 }
@@ -58,6 +25,9 @@ pub async fn write_msg(
     msg: &Message<'_>,
 ) -> Result<()> {
     let used = postcard::to_slice(msg, from_buf)?;
+
+    trace!(hex = crate::hex(used), "Sending message");
+
     match stream.write_all(used).await {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == ErrorKind::WriteZero => Err(Error::StreamClosed),

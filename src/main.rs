@@ -1,11 +1,10 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use anyhow::Context;
 use clap::Parser;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_postgres::NoTls;
-use tracing::{error, info, info_span, Instrument};
+use tracing::{debug, error, info, info_span, Instrument};
 use tracing_subscriber::EnvFilter;
 
 use memryze::db::PgClient;
@@ -35,6 +34,8 @@ async fn main() -> anyhow::Result<()> {
             EnvFilter::from_default_env().add_directive("tokio_postgres=error".parse()?),
         )
         .with_target(true)
+        .with_file(true)
+        .with_line_number(true)
         .init();
 
     let (pg_client, pg_conn) = tokio_postgres::connect(&args.pg_uri, NoTls).await?;
@@ -56,9 +57,10 @@ async fn main() -> anyhow::Result<()> {
         let pg_client = pg_client.clone();
         tokio::spawn(
             async move {
-                // TODO: Move protocol::Error to lib and handle StreamClosed properly here.
-                if let Err(err) = handle(stream, addr, pg_client).await {
-                    error!(?err);
+                match handle(stream, addr, pg_client).await {
+                    Ok(()) => (),
+                    Err(err @ memryze::Error::StreamClosed) => debug!(%err),
+                    Err(err) => error!(?err),
                 }
             }
             .instrument(info_span!("handle", %addr)),
@@ -70,19 +72,19 @@ async fn handle(
     mut stream: TcpStream,
     _addr: SocketAddr,
     pg_client: Arc<PgClient>,
-) -> anyhow::Result<()> {
+) -> memryze::Result<()> {
     info!("handling peer");
 
     let mut in_buf = vec![0u8; 512];
     let mut prim_out_buf = vec![0u8; 512];
     let mut sec_out_buf = vec![0u8; 2048];
 
-    let first_msg = prot::read_msg(&mut stream, &mut in_buf)
-        .await
-        .context("Error reading the first message")?;
+    let first_msg = prot::read_msg(&mut stream, &mut in_buf).await?;
 
     let Message::Handshake { version } = first_msg else {
-        anyhow::bail!("First message was not handshake");
+        return Err(memryze::Error::Other(
+            "First message was not handshake".to_string(),
+        ));
     };
 
     info!(version, "Client handshake received");
@@ -128,7 +130,8 @@ async fn handle(
                 };
             }
             msg => {
-                anyhow::bail!("Client sent wrong message: {:?}", msg);
+                let err = format!("Client sent wrong message: {:?}", msg);
+                return Err(memryze::Error::Other(err));
             }
         }
     }
