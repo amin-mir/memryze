@@ -16,11 +16,15 @@ pub enum Message<'a> {
     GetQuiz,
     Quiz { count: u16, qas_bytes: &'a [u8] },
 
+    ReviewQA { id: i64, correct: bool },
+    ReviewQAResp,
+
     InternalError,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QA {
+    pub id: i64,
     pub q: String,
     pub a: String,
 }

@@ -3,7 +3,6 @@ use std::process;
 
 use clap::{Parser, Subcommand};
 use tokio::net::TcpStream;
-// use tokio::time::{self, Duration};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -27,6 +26,14 @@ enum Commands {
         a: String,
     },
     GetQuiz,
+    CorrectReview {
+        #[arg(help = "ID of qa")]
+        id: i64,
+    },
+    WrongReview {
+        #[arg(help = "ID of qa")]
+        id: i64,
+    },
 }
 
 #[tokio::main]
@@ -35,6 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
+        .with_target(false)
         .with_file(true)
         .with_line_number(true)
         .init();
@@ -62,7 +70,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let msg = match args.command {
         Commands::InsertQA { ref q, ref a } => Message::AddQA { q, a },
         Commands::GetQuiz => Message::GetQuiz,
-        _ => panic!("Unsupported command"),
+        Commands::CorrectReview { id } => Message::ReviewQA { id, correct: true },
+        Commands::WrongReview { id } => Message::ReviewQA { id, correct: false },
     };
 
     prot::write_msg(&mut stream, &mut prim_out_buf, &msg).await?;
@@ -75,6 +84,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Message::Quiz { count, qas_bytes } => {
             prot::deser_from_bytes(qas_bytes, count, &mut qas)?;
             info!(?qas, "Quiz");
+        }
+        Message::ReviewQAResp => {
+            info!(?resp, "ReviewQA successful");
+        }
+        Message::InternalError => {
+            error!("Internal server error");
         }
         _ => panic!("Invalid response from server"),
     }

@@ -1,6 +1,6 @@
-use std::{ops::Fn, pin::pin};
+use std::pin::pin;
 
-use futures::{stream::StreamExt, Future};
+use futures::stream::StreamExt;
 use tokio_postgres::{Client, Statement};
 
 use crate::QA;
@@ -9,6 +9,8 @@ pub struct PgClient {
     client: Client,
     insert_qa_stmt: Statement,
     get_quiz_stmt: Statement,
+    correct_review_stmt: Statement,
+    wrong_review_stmt: Statement,
 }
 
 impl PgClient {
@@ -19,12 +21,29 @@ impl PgClient {
 
         let get_quiz_stmt = client
             .prepare(
-                "SELECT * \
+                "SELECT id, q, a \
                 FROM qa \
-                WHERE correct_count < max
+                WHERE correct_count < max \
                 AND (last_shown_at IS NULL OR last_shown_at < CURRENT_DATE) \
-                ORDER BY created_at DESC, correct_count ASC \
+                ORDER BY created_at DESC \
                 LIMIT 20",
+            )
+            .await?;
+
+        let correct_review_stmt = client
+            .prepare(
+                "UPDATE qa \
+                SET correct_count = correct_count + 1, \
+                    last_shown_at = CURRENT_TIMESTAMP \
+                WHERE id = $1",
+            )
+            .await?;
+
+        let wrong_review_stmt = client
+            .prepare(
+                "UPDATE qa \
+                SET last_shown_at = CURRENT_TIMESTAMP \
+                WHERE id = $1",
             )
             .await?;
 
@@ -32,6 +51,8 @@ impl PgClient {
             client,
             insert_qa_stmt,
             get_quiz_stmt,
+            correct_review_stmt,
+            wrong_review_stmt,
         })
     }
 
@@ -51,13 +72,29 @@ impl PgClient {
         let mut i = 0;
         while let Some(r) = row_iter.next().await {
             let r = r?;
+            qas[i].id = r.get(0);
+
             qas[i].q.clear();
             qas[i].q.push_str(r.get(1));
+
             qas[i].a.clear();
             qas[i].a.push_str(r.get(2));
             i += 1;
         }
 
         Ok(i)
+    }
+
+    pub async fn review_qa(&self, id: i64, correct: bool) -> anyhow::Result<()> {
+        let stmt = if correct {
+            &self.correct_review_stmt
+        } else {
+            &self.wrong_review_stmt
+        };
+
+        let n = self.client.execute(stmt, &[&id]).await?;
+        anyhow::ensure!(n == 1);
+
+        Ok(())
     }
 }

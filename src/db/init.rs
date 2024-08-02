@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     client
         .simple_query(
             "CREATE TABLE IF NOT EXISTS qa (
-                id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+                id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
                 q TEXT NOT NULL UNIQUE,
                 a TEXT NOT NULL,
                 max INTEGER NOT NULL DEFAULT 3,

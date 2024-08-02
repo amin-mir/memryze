@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(
             EnvFilter::from_default_env().add_directive("tokio_postgres=error".parse()?),
         )
-        .with_target(true)
+        .with_target(false)
         .with_file(true)
         .with_line_number(true)
         .init();
@@ -73,8 +73,6 @@ async fn handle(
     _addr: SocketAddr,
     pg_client: Arc<PgClient>,
 ) -> memryze::Result<()> {
-    info!("handling peer");
-
     let mut in_buf = vec![0u8; 512];
     let mut prim_out_buf = vec![0u8; 512];
     let mut sec_out_buf = vec![0u8; 2048];
@@ -109,7 +107,7 @@ async fn handle(
                 match pg_client.get_quiz(&mut qas).await {
                     Ok(n) => {
                         // TODO: what would happen if n == 0?
-                        info!(count = n, len = qas.len(), qas = ?&qas[0..n], "fetched qas from db");
+                        debug!(count = n, qas = ?&qas[0..n], "fetched qas from db");
                         let qas_bytes = prot::ser_slice(&qas[0..n], &mut sec_out_buf)?;
                         prot::write_msg(
                             &mut stream,
@@ -128,6 +126,14 @@ async fn handle(
                         continue;
                     }
                 };
+            }
+            Message::ReviewQA { id, correct } => {
+                if let Err(err) = pg_client.review_qa(id, correct).await {
+                    error!(?err, "Error reviewing QA");
+                    prot::write_msg(&mut stream, &mut prim_out_buf, &Message::InternalError)
+                        .await?;
+                }
+                prot::write_msg(&mut stream, &mut prim_out_buf, &Message::ReviewQAResp).await?;
             }
             msg => {
                 let err = format!("Client sent wrong message: {:?}", msg);
