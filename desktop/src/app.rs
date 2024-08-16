@@ -67,44 +67,40 @@ pub fn app() -> Html {
     html! {
         <main class="container">
             <div class="row">
-                <a href="https://tauri.app" target="_blank">
-                    <img src="public/tauri.svg" class="logo tauri" alt="Tauri logo"/>
-                </a>
-                <a href="https://yew.rs" target="_blank">
-                    <img src="public/yew.png" class="logo yew" alt="Yew logo"/>
-                </a>
+                <div class="input-group">
+                    <label>{"Question"}</label>
+                    <textarea type="text" name="question" rows=10 />
+                </div>
+                <div class="input-group">
+                    <label>{"Answer"}</label>
+                    <textarea type="text" name="answer" rows=10 />
+                </div>
             </div>
-
-            <p>{"Click on the Tauri and Yew logos to learn more."}</p>
-
-            <form class="row" onsubmit={greet}>
-                <input id="greet-input" ref={greet_input_ref} placeholder="Enter a name..." />
-                <button type="submit">{"Greet"}</button>
-            </form>
-
-            <p><b>{ &*greet_msg }</b></p>
-
-            <Inputs />
+            <button type="submit" class="submit-button">{"Submit"}</button>
         </main>
     }
 }
 
-#[function_component(Inputs)]
-fn inputs() -> Html {
-    html! {
-        <div>
-            <div data-key="abc"></div>
-            <div class="parent">
-                <span class="child" value="anything"></span>
-                <label for="first-name">{ "First Name" }</label>
-                <input type="text" id="first-name" value="placeholder" />
-                <input type="checkbox" checked=true />
-                <textarea value="write a story" />
-                <select name="status">
-                    <option selected=true disabled=false value="">{ "Selected" }</option>
-                    <option selected=false disabled=true value="">{ "Unselected" }</option>
-                </select>
-            </div>
-        </div>
-    }
-}
+// html! {
+//     <main class="container">
+//         <div class="row">
+//             <a href="https://tauri.app" target="_blank">
+//                 <img src="public/tauri.svg" class="logo tauri" alt="Tauri logo"/>
+//             </a>
+//             <a href="https://yew.rs" target="_blank">
+//                 <img src="public/yew.png" class="logo yew" alt="Yew logo"/>
+//             </a>
+//         </div>
+//
+//         <p>{"Click on the Tauri and Yew logos to learn more."}</p>
+//
+//         <form class="row" onsubmit={greet}>
+//             <input id="greet-input" ref={greet_input_ref} placeholder="Enter a name..." />
+//             <button type="submit">{"Greet"}</button>
+//         </form>
+//
+//         <p><b>{ &*greet_msg }</b></p>
+//
+//         <Inputs />
+//     </main>
+// }

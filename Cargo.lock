@@ -692,6 +692,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "prot"
+version = "0.1.0"
+dependencies = [
+ "postcard",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
