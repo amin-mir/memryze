@@ -1,0 +1,32 @@
+[package]
+name = "memryze"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "memryze"
+path = "src/main.rs"
+
+[[bin]]
+name = "client"
+path = "src/client/client.rs"
+
+[[bin]]
+name = "db"
+path = "src/db/init.rs"
+
+[dependencies]
+anyhow = "1.0.86"
+clap = { version = "4.5.9", features = ["derive"] }
+serde = "1.0.204"
+postcard = "1.0.8"
+futures = "0.3.30"
+tokio = { version = "1.38.0", features = ["full"] }
+tokio-postgres = "0.7.10"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = [
+  "default",
+  "env-filter",
+] }

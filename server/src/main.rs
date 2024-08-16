@@ -106,7 +106,8 @@ async fn handle(
             Message::GetQuiz => {
                 match pg_client.get_quiz(&mut qas).await {
                     Ok(n) => {
-                        // TODO: what would happen if n == 0?
+                        // If n = 0 the payload will be [0x04, 0x00, 0x00] and the client
+                        // will receive qas as an empty slice of bytes.
                         debug!(count = n, qas = ?&qas[0..n], "fetched qas from db");
                         let qas_bytes = prot::ser_slice(&qas[0..n], &mut sec_out_buf)?;
                         prot::write_msg(
