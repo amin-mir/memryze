@@ -9,3 +9,4 @@ serde = "1.0.204"
 postcard = "1.0.8"
 tokio = { version="1", features = ["net", "io-util"] }
 tracing = "0.1.40"
+message = { path = "../message" }

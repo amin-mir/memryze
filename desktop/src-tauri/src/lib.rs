@@ -1,11 +1,10 @@
-use serde::Serialize;
 use tauri::{Builder, Manager, State};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use prot::Message;
+use message::{Message, QA};
 
 const ADDR: &str = "127.0.0.1:8080";
 
@@ -46,7 +45,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![add_qa])
+        .invoke_handler(tauri::generate_handler![add_qa, get_quiz,])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -82,9 +81,9 @@ async fn connect(in_buf: &mut [u8], prim_out_buf: &mut [u8]) -> Result<TcpStream
 }
 
 #[tauri::command]
-async fn add_qa(state: State<'_, AppState>, msg: prot::Message<'_>) -> Result<()> {
-    let prot::Message::AddQA { .. } = msg else {
-        return Err("wrong msg type".into());
+async fn add_qa(state: State<'_, AppState>, msg: Message<'_>) -> Result<()> {
+    let Message::AddQA { .. } = msg else {
+        return Err(format!("expected AddQA, got {:?}", msg));
     };
 
     let mut state = state.lock().await;
@@ -100,8 +99,39 @@ async fn add_qa(state: State<'_, AppState>, msg: prot::Message<'_>) -> Result<()
         Err(e) => return Err(e.to_string()),
     };
 
-    let prot::Message::AddQAResp = resp else {
-        return Err("unexpected resp from server".into());
+    let Message::AddQAResp = resp else {
+        return Err(format!("expected AddQAResp, got {:?}", resp));
     };
     Ok(())
+}
+
+#[tauri::command]
+async fn get_quiz(state: State<'_, AppState>, mut qas: Vec<QA>) -> Result<Vec<QA>> {
+    qas.clear();
+
+    let msg = Message::GetQuiz;
+
+    let mut state = state.lock().await;
+
+    let (in_buf, out_buf, stream) = state.split_borrow_mut();
+    match prot::write_msg(stream, out_buf, &msg).await {
+        Ok(_) => (),
+        Err(e) => return Err(e.to_string()),
+    }
+
+    let resp = match prot::read_msg(stream, in_buf).await {
+        Ok(msg) => msg,
+        Err(e) => return Err(e.to_string()),
+    };
+
+    let Message::Quiz { count, qas_bytes } = resp else {
+        return Err(format!("expected Quiz, got {:?}", resp));
+    };
+
+    match prot::deser_from_bytes(qas_bytes, count, &mut qas) {
+        Ok(_) => (),
+        Err(e) => return Err(e.to_string()),
+    };
+
+    Ok(qas)
 }

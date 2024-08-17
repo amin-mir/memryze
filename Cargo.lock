@@ -517,6 +517,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "message"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "miniz_oxide"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -695,6 +702,7 @@ dependencies = [
 name = "prot"
 version = "0.1.0"
 dependencies = [
+ "message",
  "postcard",
  "serde",
  "tokio",

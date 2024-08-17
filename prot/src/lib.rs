@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display};
 use std::io::{self, ErrorKind};
 
+use message::Message;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -39,29 +40,6 @@ impl From<postcard::Error> for Error {
     fn from(err: postcard::Error) -> Self {
         Error::Prot(err)
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum Message<'a> {
-    Handshake { version: u8 },
-
-    AddQA { q: &'a str, a: &'a str },
-    AddQAResp,
-
-    GetQuiz,
-    Quiz { count: u16, qas_bytes: &'a [u8] },
-
-    ReviewQA { id: i64, correct: bool },
-    ReviewQAResp,
-
-    InternalError,
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
-pub struct QA {
-    pub id: i64,
-    pub q: String,
-    pub a: String,
 }
 
 pub async fn read_msg<'a>(stream: &mut TcpStream, to_buf: &'a mut [u8]) -> Result<Message<'a>> {
@@ -132,7 +110,7 @@ fn hex(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::QA;
+    use message::QA;
 
     #[test]
     fn test_quiz() {
