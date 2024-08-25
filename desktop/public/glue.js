@@ -6,5 +6,9 @@ export async function addQa(msg) {
 }
 
 export async function getQuiz(qas) {
-		return await invole("get_quiz", { qas });
+    return await invoke("get_quiz", { qas });
+}
+
+export async function reviewQa(msg) {
+    return await invoke("review_qa", { msg });
 }

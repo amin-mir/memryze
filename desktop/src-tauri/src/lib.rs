@@ -45,7 +45,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![add_qa, get_quiz,])
+        .invoke_handler(tauri::generate_handler![add_qa, get_quiz, review_qa])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -134,4 +134,30 @@ async fn get_quiz(state: State<'_, AppState>, mut qas: Vec<QA>) -> Result<Vec<QA
     };
 
     Ok(qas)
+}
+
+#[tauri::command]
+async fn review_qa(state: State<'_, AppState>, msg: Message<'_>) -> Result<()> {
+    let Message::ReviewQA { .. } = msg else {
+        return Err(format!("expected ReviewQA, got {:?}", msg));
+    };
+
+    let mut state = state.lock().await;
+
+    let (in_buf, out_buf, stream) = state.split_borrow_mut();
+    match prot::write_msg(stream, out_buf, &msg).await {
+        Ok(_) => (),
+        Err(e) => return Err(e.to_string()),
+    }
+
+    let resp = match prot::read_msg(stream, in_buf).await {
+        Ok(msg) => msg,
+        Err(e) => return Err(e.to_string()),
+    };
+
+    let Message::ReviewQAResp = resp else {
+        return Err(format!("expected ReviewQAResp, got {:?}", resp));
+    };
+
+    Ok(())
 }

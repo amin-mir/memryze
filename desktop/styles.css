@@ -1,26 +1,52 @@
-body {
-  font-family: Arial, sans-serif;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
+@import url('https://fonts.googleapis.com/css2?family=Libre+Franklin:ital,wght@0,100..900;1,100..900&display=swap');
+
+* {
   margin: 0;
-  background-color: #f5f5f5;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .container {
-  /* border: 2px solid #000; */
+  font-size: 1rem;
+  font-family: 'Libre Franklin';
   padding: 20px;
-  width: 60vw;
+  width: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  background-color: #fff;
-  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+  background-color: rgb(245, 245, 245);
 }
 
-.container > p {
+.navbar {
+  width: 18vw;
+  display: flex;
+  justify-content: space-between;
+  list-style-type: none;
+  padding: 1em 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.navbar li {
+  padding: 0.5em;
+  border-radius: 4px;
+}
+
+.navbar li:hover {
+  background-color: #45a049;
+  color: white;
+}
+
+.navbar-selected {
+  outline: 1px #4CAF50 solid;
+  /* transition: border 0.3s; */
+}
+
+.container>p {
   align-self: flex-start;
+  margin-bottom: 0.25em;
+  font-size: 1.2em;
+  color: #F44336;
 }
 
 .row {
@@ -42,14 +68,11 @@ label {
   font-weight: bold;
 }
 
-input[type="text"] {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  resize: none;
-  box-sizing: border-box;
-  height: 100px;
+.actions {
+  display: flex;
+  flex-direction: row;
+  justify-content: left;
+  gap: 1em;
 }
 
 .submit-button {
@@ -65,4 +88,12 @@ input[type="text"] {
 
 .submit-button:hover {
   background-color: #45a049;
+}
+
+.error-button {
+  background-color: #F44336;
+}
+
+.error-button:hover {
+  background-color: #D32F2F;
 }

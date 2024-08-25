@@ -1,4 +1,7 @@
 mod app;
+mod commands;
+mod quiz;
+mod submit;
 
 use app::App;
 
