@@ -68,6 +68,15 @@ label {
   font-weight: bold;
 }
 
+textarea {
+  border-color: #ccc;
+  transition: border-color 0.4s ease;
+}
+
+textarea.successful-submit {
+  border: 2px #4CAF50 solid;
+}
+
 .actions {
   display: flex;
   flex-direction: row;
