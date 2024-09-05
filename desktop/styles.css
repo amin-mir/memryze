@@ -21,7 +21,8 @@
 .navbar {
   width: 18vw;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 0.2em;
   list-style-type: none;
   padding: 1em 0.5em;
   margin-bottom: 0.5em;
@@ -49,6 +50,13 @@
   color: #F44336;
 }
 
+.container .cond-render {
+  align-self: center;
+  width: 100%;
+  text-align: center;
+  font-size: 2em;
+}
+
 .row {
   width: 100%;
   display: flex;
@@ -69,12 +77,25 @@ label {
 }
 
 textarea {
+  padding: 0.5em;
+  font-size: 1.5em;
   border-color: #ccc;
-  transition: border-color 0.4s ease;
+  outline: none;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
-textarea.successful-submit {
-  border: 2px #4CAF50 solid;
+textarea:disabled {
+  background-color: #f0f0f0;
+  color: #999;
+  border: 1px dashed #ccc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+textarea:focus {
+  border-color: #4CAF50;
+  background-color: #fff;
+  box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
 }
 
 .actions {
@@ -93,9 +114,17 @@ textarea.successful-submit {
   cursor: pointer;
   font-size: 16px;
   align-self: flex-start;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-.submit-button:hover {
+.submit-button:disabled {
+  background-color: #ccc;
+  color: #777;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.submit-button:hover:not(:disabled) {
   background-color: #45a049;
 }
 
@@ -103,6 +132,14 @@ textarea.successful-submit {
   background-color: #F44336;
 }
 
-.error-button:hover {
+.error-button:hover:not(:disabled) {
   background-color: #D32F2F;
+}
+
+.neutral-button {
+  background-color: #EEB757;
+}
+
+.neutral-button:hover:not(:disabled) {
+  background-color: #F0AE3C;
 }

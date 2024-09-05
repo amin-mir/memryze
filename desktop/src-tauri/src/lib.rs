@@ -106,8 +106,8 @@ async fn add_qa(state: State<'_, AppState>, msg: Message<'_>) -> Result<()> {
 }
 
 #[tauri::command]
-async fn get_quiz(state: State<'_, AppState>, mut qas: Vec<QA>) -> Result<Vec<QA>> {
-    qas.clear();
+async fn get_quiz(state: State<'_, AppState>) -> Result<Vec<QA>> {
+    let mut qas = Vec::new();
 
     let msg = Message::GetQuiz;
 

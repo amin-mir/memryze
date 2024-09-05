@@ -1,169 +1,116 @@
-use gloo_timers::future::TimeoutFuture;
 use message::{Message, QA};
-use serde_wasm_bindgen::{from_value, to_value};
+use serde_wasm_bindgen::to_value;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 
-use crate::commands::{get_quiz, review_qa};
+use crate::commands::review_qa;
+
+#[derive(Properties, PartialEq, Clone)]
+pub struct QuizProperties {
+    pub qa: Option<QA>,
+    pub onreview: Callback<()>,
+    pub onerror: Callback<String>,
+}
 
 #[function_component(QuizComponent)]
-pub fn quiz() -> Html {
-    let q_ref = use_node_ref();
-    let a_ref = use_node_ref();
-
-    let fetched_qas = use_state(|| Vec::<QA>::new());
-    let current_qa_idx = use_state(|| 0);
-    let status_message = use_state(|| String::from("Fetching a quiz"));
-    let submit_review_success = use_state(|| false);
-
-    {
-        // TODO: Every time we switch to this component a fetch request is sent to server.
-        // Instead App should handle this and pass a callback that this component could
-        // call to refresh the qas, and also recieve the qas as props.
-        let fetched_qas = fetched_qas.clone();
-        let current_qa_idx = current_qa_idx.clone();
-        let status_message = status_message.clone();
-
-        use_effect_with((), move |_| {
-            let fetched_qas = fetched_qas.clone();
-            let current_qa_idx = current_qa_idx.clone();
-            let status_message = status_message.clone();
-
-            spawn_local(async move {
-                // TODO: try dereferencin the state qas.
-                let qas: Vec<QA> = Vec::new();
-                let args = to_value(&qas).unwrap();
-                let res = get_quiz(args).await;
-                match res {
-                    Ok(jsval) => {
-                        match from_value(jsval) {
-                            Ok(qas) => {
-                                fetched_qas.set(qas);
-                            }
-                            Err(e) => status_message.set(e.to_string()),
-                        }
-                        current_qa_idx.set(0);
-                    }
-                    Err(e) => {
-                        status_message.set(e.as_string().unwrap());
-                    }
-                }
-            });
-        });
+pub fn quiz(props: &QuizProperties) -> Html {
+    let revealed = use_state(|| false);
+    if props.qa.is_none() {
+        return html! {
+            <p class="cond-render">{ "There are no questions to review" }</p>
+        };
     }
 
-    {
-        // Change the q & a values when fetching from server.
-        let q_ref = q_ref.clone();
-        let a_ref = a_ref.clone();
-        let fetched_qas = fetched_qas.clone();
-        let current_qa_idx = current_qa_idx.clone();
+    let qa = props.qa.as_ref().unwrap();
 
-        let dep = fetched_qas.clone();
-        use_effect_with(dep, move |_| {
-            if fetched_qas.len() == 0 {
-                return;
-            }
+    let onreveal = {
+        let revealed = revealed.clone();
+        move |_| {
+            revealed.set(!*revealed);
+        }
+    };
 
-            let qas_str = format!("{:?}", *fetched_qas);
-            web_sys::console::log_1(&qas_str.into());
+    let q_val = &qa.q;
+    let a_val = if *revealed {
+        &qa.a
+    } else {
+        "Click Reveal to show..."
+    };
 
-            let qa = &fetched_qas[*current_qa_idx];
-
-            let q = q_ref.cast::<web_sys::HtmlTextAreaElement>().unwrap();
-            q.set_value(&qa.q);
-
-            let a = a_ref.cast::<web_sys::HtmlTextAreaElement>().unwrap();
-            a.set_value(&qa.a);
-        });
-    }
-
-    // TODO: Also increase the current index and use_effect_with on that to
-    // display the next question. If index = len - 1, we need to fetch a new
-    // set of qas.
-    let correct_review = {
-        let fetched_qas = fetched_qas.clone();
-        let current_qa_idx = current_qa_idx.clone();
-        let status_message = status_message.clone();
-        let submit_review_success = submit_review_success.clone();
+    let make_review_cb = |correct: bool| /* -> Callback<()> */ {
+        let qa_id = qa.id;
+        let onerror = props.onerror.clone();
+        let onreview = props.onreview.clone();
+        let revealed = revealed.clone();
 
         Callback::from(move |_: MouseEvent| {
-            let fetched_qas = fetched_qas.clone();
-            let current_qa_idx = current_qa_idx.clone();
-            let status_message = status_message.clone();
-            let submit_review_success = submit_review_success.clone();
+            let onerror = onerror.clone();
+            let onreview = onreview.clone();
+            let revealed = revealed.clone();
+
             spawn_local(async move {
-                let qa = &fetched_qas[*current_qa_idx];
-                submit_review_qa(status_message, submit_review_success, qa.id, true).await
+                // TODO: what if the server fails? We'll skip this question and go to next one.
+                submit_review_qa(onerror, qa_id, correct).await;
+                onreview.emit(());
+                revealed.set(false);
             });
         })
     };
 
-    let wrong_review = {
-        let fetched_qas = fetched_qas.clone();
-        let current_qa_idx = current_qa_idx.clone();
-        let status_message = status_message.clone();
-        let submit_review_success = submit_review_success.clone();
-
-        Callback::from(move |_: MouseEvent| {
-            let fetched_qas = fetched_qas.clone();
-            let current_qa_idx = current_qa_idx.clone();
-            let status_message = status_message.clone();
-            let submit_review_success = submit_review_success.clone();
-
-            spawn_local(async move {
-                let qa = &fetched_qas[*current_qa_idx];
-                submit_review_qa(status_message, submit_review_success, qa.id, false).await;
-            });
-        })
-    };
+    let correct_review = make_review_cb(true);
+    let wrong_review = make_review_cb(false);
 
     html! {
         <>
-            <p><span>{if status_message.is_empty() { "" } else { "* "}}</span>{&*status_message}</p>
             <div class="row">
                 <div class="input-group">
                     <label>{"Question"}</label>
                     <textarea
-                        class={classes!(if *submit_review_success { "successful-submit" } else { "" })}
-                        ref={q_ref}
                         name="question"
                         rows=10
+                        value={q_val.clone()}
                     />
                 </div>
                 <div class="input-group">
                     <label>{"Answer"}</label>
                     <textarea
-                        class={classes!(if *submit_review_success { "successful-submit" } else { "" })}
-                        ref={a_ref}
+                        disabled={ !*revealed }
                         name="answer"
                         rows=10
+                        value={a_val.to_string()}
                     />
                 </div>
             </div>
             <div class="actions">
-                <button type="submit" class="submit-button" onclick={correct_review}>{"Correct"}</button>
-                <button type="submit" class="submit-button error-button" onclick={wrong_review}>{"Wrong"}</button>
+                <button type="submit"
+                    disabled={ !*revealed }
+                    class="submit-button"
+                    onclick={correct_review}
+                >{"Correct"}</button>
+
+                <button type="submit"
+                    disabled={ !*revealed }
+                    class="submit-button error-button"
+                    onclick={wrong_review}
+                >{"Wrong"}</button>
+
+                <button type="button"
+                    disabled={ *revealed }
+                    class="submit-button neutral-button"
+                    onclick={onreveal}
+                >{"Reveal"}</button>
             </div>
         </>
     }
 }
 
-async fn submit_review_qa(
-    status_message: UseStateHandle<String>,
-    submit_review_success: UseStateHandle<bool>,
-    id: i64,
-    correct: bool,
-) {
+async fn submit_review_qa(onerror: Callback<String>, id: i64, correct: bool) {
     let msg = Message::ReviewQA { id, correct };
     let args = to_value(&msg).unwrap();
     match review_qa(args).await {
         Ok(_) => {
-            status_message.set("".to_string());
-            submit_review_success.set(true);
-            TimeoutFuture::new(500).await;
-            submit_review_success.set(false);
+            onerror.emit("".to_string());
         }
-        Err(e) => status_message.set(e.as_string().unwrap()),
+        Err(e) => onerror.emit(e.as_string().unwrap()),
     }
 }
