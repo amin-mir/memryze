@@ -1,0 +1,28 @@
+product-name = "desktop"
+version = "0.0.0"
+identifier = "com.kaiju.no.jojo"
+
+[build]
+before-dev-command = "trunk serve"
+dev-url = "http://localhost:1420"
+before-build-command = "trunk build"
+frontend-dist = "../dist"
+
+[app]
+with-global-tauri = true
+
+[[app.windows]]
+title = "MemRyze"
+width = 900
+height = 650
+
+[bundle]
+active = true
+targets = "all"
+icon = [
+  "icons/32x32.png",
+  "icons/128x128.png",
+  "icons/128x128@2x.png",
+  "icons/icon.icns",
+  "icons/icon.ico"
+]
