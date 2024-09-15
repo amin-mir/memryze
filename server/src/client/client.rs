@@ -6,13 +6,25 @@ use tokio::net::TcpStream;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
-use memryze::protocol as prot;
-use memryze::{Message, QA};
-
-const ADDR: &str = "127.0.0.1:8080";
+use message::{Message, QA};
+use prot;
 
 #[derive(Debug, Parser)]
 struct Args {
+    #[arg(
+        long,
+        help = "Authentication token",
+        default_value = "17bd4593ade7a97020ae0de719099f5b13fbf1b17a21f1882e4063f0e660e020"
+    )]
+    token: String,
+
+    #[arg(
+        long,
+        help = "Postgres connection address",
+        default_value = "127.0.0.1:8080"
+    )]
+    pg_addr: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -47,23 +59,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_line_number(true)
         .init();
 
-    let mut stream = TcpStream::connect(ADDR).await?;
+    let mut stream = TcpStream::connect(args.pg_addr).await?;
 
     let mut in_buf = vec![0u8; 512];
     let mut prim_out_buf = vec![0u8; 512];
 
-    let handshake = Message::Handshake { version: 1 };
+    let handshake = Message::Handshake {
+        version: 1,
+        token: &args.token,
+    };
 
     prot::write_msg(&mut stream, &mut prim_out_buf, &handshake).await?;
 
     let handshake_reply = prot::read_msg(&mut stream, &mut in_buf).await?;
 
-    let Message::Handshake { version } = handshake_reply else {
+    let Message::HandshakeResp = handshake_reply else {
         error!(?handshake_reply, "Handshake reply has the wrong type");
         process::exit(1);
     };
 
-    info!(version, "Received handshake from server");
+    info!("Received handshake from server");
 
     let mut qas: Vec<QA> = Vec::with_capacity(10);
 

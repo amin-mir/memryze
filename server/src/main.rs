@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use anyhow::Context;
 use clap::Parser;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_postgres::NoTls;
@@ -8,8 +9,8 @@ use tracing::{debug, error, info, info_span, Instrument};
 use tracing_subscriber::EnvFilter;
 
 use memryze::db::PgClient;
-use memryze::protocol as prot;
-use memryze::{Message, QA};
+use message::{Message, QA};
+use prot;
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -59,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
             async move {
                 match handle(stream, addr, pg_client).await {
                     Ok(()) => (),
-                    Err(err @ memryze::Error::StreamClosed) => debug!(%err),
+                    Err(err @ prot::Error::StreamClosed) => debug!(%err),
                     Err(err) => error!(?err),
                 }
             }
@@ -72,41 +73,46 @@ async fn handle(
     mut stream: TcpStream,
     _addr: SocketAddr,
     pg_client: Arc<PgClient>,
-) -> memryze::Result<()> {
+) -> prot::Result<()> {
     let mut in_buf = vec![0u8; 512];
     let mut prim_out_buf = vec![0u8; 512];
     let mut sec_out_buf = vec![0u8; 2048];
 
     let first_msg = prot::read_msg(&mut stream, &mut in_buf).await?;
 
-    let Message::Handshake { version } = first_msg else {
-        return Err(memryze::Error::Other(
-            "First message was not handshake".to_string(),
-        ));
+    let Message::Handshake { version, token } = first_msg else {
+        let err = anyhow::anyhow!("First message was not handshake");
+        return Err(prot::Error::Other(err));
     };
 
-    info!(version, "Client handshake received");
+    let customer_id = pg_client
+        .customer_id_from_token(token)
+        .await
+        .context("Fetching customer id from token")?;
 
-    let handshake_reply = Message::Handshake { version };
-    prot::write_msg(&mut stream, &mut prim_out_buf, &handshake_reply).await?;
+    info!(version, customer_id, "Client handshake received");
+
+    prot::write_msg(&mut stream, &mut prim_out_buf, &Message::HandshakeResp).await?;
 
     let mut qas: Vec<QA> = vec![QA::default(); 20];
     loop {
         let msg = prot::read_msg(&mut stream, &mut in_buf).await?;
 
         match msg {
-            Message::AddQA { q, a } => {
-                if let Err(err) = pg_client.insert_qa(&q, &a).await {
+            Message::AddQA { q, a } => match pg_client.insert_qa(customer_id, &q, &a).await {
+                Ok(_) => {
+                    prot::write_msg(&mut stream, &mut prim_out_buf, &Message::AddQAResp).await?
+                }
+                Err(err) => {
                     error!(?err, "Error inserting QA");
                     prot::write_msg(&mut stream, &mut prim_out_buf, &Message::InternalError)
                         .await?;
                 }
-                prot::write_msg(&mut stream, &mut prim_out_buf, &Message::AddQAResp).await?;
-            }
+            },
             Message::GetQuiz => {
-                match pg_client.get_quiz(&mut qas).await {
+                match pg_client.get_quiz(customer_id, &mut qas).await {
                     Ok(n) => {
-                        // If n = 0 the payload will be [0x04, 0x00, 0x00] and the client
+                        // If n = 0 the payload will be `[0x05, 0x00, 0x00]` and the client
                         // will receive qas as an empty slice of bytes.
                         debug!(count = n, qas = ?&qas[0..n], "fetched qas from db");
                         let qas_bytes = prot::ser_slice(&qas[0..n], &mut sec_out_buf)?;
@@ -124,21 +130,22 @@ async fn handle(
                         error!(?err, "Error fetching a quiz");
                         prot::write_msg(&mut stream, &mut prim_out_buf, &Message::InternalError)
                             .await?;
-                        continue;
                     }
                 };
             }
-            Message::ReviewQA { id, correct } => {
-                if let Err(err) = pg_client.review_qa(id, correct).await {
+            Message::ReviewQA { id, correct } => match pg_client.review_qa(id, correct).await {
+                Err(err) => {
                     error!(?err, "Error reviewing QA");
                     prot::write_msg(&mut stream, &mut prim_out_buf, &Message::InternalError)
                         .await?;
                 }
-                prot::write_msg(&mut stream, &mut prim_out_buf, &Message::ReviewQAResp).await?;
-            }
+                Ok(()) => {
+                    prot::write_msg(&mut stream, &mut prim_out_buf, &Message::ReviewQAResp).await?;
+                }
+            },
             msg => {
-                let err = format!("Client sent wrong message: {:?}", msg);
-                return Err(memryze::Error::Other(err));
+                let err = anyhow::anyhow!("Client sent wrong message: {:?}", msg);
+                return Err(prot::Error::Other(err));
             }
         }
     }

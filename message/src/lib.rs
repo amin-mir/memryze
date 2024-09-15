@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Message<'a> {
-    Handshake { version: u8 },
+    Handshake { version: u8, token: &'a str },
+    HandshakeResp,
 
     AddQA { q: &'a str, a: &'a str },
     AddQAResp,

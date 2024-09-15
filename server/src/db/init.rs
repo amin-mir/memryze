@@ -2,6 +2,30 @@ use std::error::Error;
 
 use tokio_postgres::NoTls;
 
+const CREATE_TABLES_QUERY: &str = r#"
+CREATE TABLE IF NOT EXISTS qa (
+    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    q TEXT NOT NULL UNIQUE,
+    a TEXT NOT NULL,
+    customer_id BIGINT NOT NULL REFERENCES customer (id),
+    max INTEGER NOT NULL DEFAULT 3,
+    correct_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_shown_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_qa_created_at ON qa (created_at);
+CREATE INDEX IF NOT EXISTS idx_qa_correct_count_last_shown_at_created_at
+    ON qa (customer_id, correct_count, last_shown_at, created_at);
+
+CREATE TABLE IF NOT EXISTS customer (
+    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    token text NOT NULL UNIQUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_token ON customer (token);
+"#;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let (client, connection) =
@@ -13,40 +37,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    client
-        .simple_query(
-            "CREATE TABLE IF NOT EXISTS qa (
-                id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-                q TEXT NOT NULL UNIQUE,
-                a TEXT NOT NULL,
-                max INTEGER NOT NULL DEFAULT 3,
-                correct_count INTEGER NOT NULL DEFAULT 0,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                last_shown_at TIMESTAMP
-            );
-            CREATE INDEX IF NOT EXISTS idx_qa_created_at ON qa (created_at);
-            CREATE INDEX IF NOT EXISTS idx_qa_correct_count_last_shown_at_created_at
-            ON qa (correct_count, last_shown_at, created_at);",
-        )
-        .await?;
+    client.simple_query(CREATE_TABLES_QUERY).await?;
 
     let insert_qa_stmt = client
-        .prepare("INSERT INTO qa (q, a) VALUES ($1, $2)")
+        .prepare("INSERT INTO qa (q, a, customer_id) VALUES ($1, $2, $3)")
         .await?;
 
     let err = client
         .execute(
             &insert_qa_stmt,
-            &[&"is this place free?", &"onks tä paikka vapaa?"],
+            &[&"is this place free?", &"onks tä paikka vapaa?", &1i64],
         )
         .await
         .unwrap_err();
 
-    println!(
-        "duplicate insert error: code={:?}, src={:?}",
-        err.code(),
-        err.as_db_error()
-    );
+    // println!(
+    //     "duplicate insert error: code={:?}, src={:?}",
+    //     err.code(),
+    //     err.as_db_error()
+    // );
+    println!("{err:?}");
 
     Ok(())
 }

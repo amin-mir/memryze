@@ -14,7 +14,7 @@ pub enum Error {
     Io(io::Error),
     StreamClosed,
     Prot(postcard::Error),
-    Other(String),
+    Other(anyhow::Error),
 }
 
 impl Display for Error {
@@ -23,7 +23,7 @@ impl Display for Error {
             Error::Io(err) => write!(f, "I/O error: {}", err),
             Error::StreamClosed => write!(f, "Peer closed the stream"),
             Error::Prot(err) => write!(f, "(de)serializing error: {}", err),
-            Error::Other(str) => f.write_str(str),
+            Error::Other(err) => write!(f, "{}", err),
         }
     }
 }
@@ -42,7 +42,14 @@ impl From<postcard::Error> for Error {
     }
 }
 
+impl From<anyhow::Error> for Error {
+    fn from(err: anyhow::Error) -> Self {
+        Error::Other(err)
+    }
+}
+
 pub async fn read_msg<'a>(stream: &mut TcpStream, to_buf: &'a mut [u8]) -> Result<Message<'a>> {
+    // TODO: return error if to_buf is not large enough to read the message.
     let n = stream.read(to_buf).await?;
     if n == 0 {
         return Err(Error::StreamClosed);
