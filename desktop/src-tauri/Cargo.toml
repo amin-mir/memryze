@@ -28,7 +28,6 @@ tracing-subscriber = { version = "0.3.18", features = [
 ] }
 rand = "0.8.5"
 argon2 = { version = "0.5", features = [ "std" ] }
-iota_stronghold = "2.1.0"
-zeroize = "1.8.1"
+iota_stronghold = "1"
 prot = { path = "../../prot" }
 message = { path = "../../message" }

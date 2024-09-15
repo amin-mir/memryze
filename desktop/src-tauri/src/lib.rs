@@ -10,7 +10,6 @@ use tauri::{Builder, Manager, State};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tracing::error;
-use zeroize::Zeroizing;
 
 use message::{Message, QA};
 
@@ -141,7 +140,7 @@ fn get_vault_encryption_key(salt: &[u8]) -> anyhow::Result<KeyProvider> {
     Argon2::default().hash_password_into(password.as_bytes(), salt, &mut encryption_key)?;
 
     println!("12");
-    KeyProvider::try_from(Zeroizing::new(encryption_key)).map_err(Into::into)
+    KeyProvider::try_from(encryption_key).map_err(Into::into)
 }
 
 async fn connect(in_buf: &mut [u8], out_buf: &mut [u8], token: &str) -> anyhow::Result<TcpStream> {
