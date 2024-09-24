@@ -4,6 +4,13 @@ use std::error::Error;
 use tokio_postgres::NoTls;
 
 const CREATE_TABLES_QUERY: &str = r#"
+CREATE TABLE IF NOT EXISTS customer (
+    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    token text NOT NULL UNIQUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_token ON customer (token);
+
 CREATE TABLE IF NOT EXISTS qa (
     id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     q TEXT NOT NULL UNIQUE,
@@ -18,13 +25,6 @@ CREATE TABLE IF NOT EXISTS qa (
 CREATE INDEX IF NOT EXISTS idx_qa_created_at ON qa (created_at);
 CREATE INDEX IF NOT EXISTS idx_qa_correct_count_last_shown_at_created_at
     ON qa (customer_id, correct_count, last_shown_at, created_at);
-
-CREATE TABLE IF NOT EXISTS customer (
-    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    token text NOT NULL UNIQUE
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_token ON customer (token);
 "#;
 
 #[tokio::main]
