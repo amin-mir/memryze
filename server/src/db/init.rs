@@ -1,3 +1,4 @@
+use std::env;
 use std::error::Error;
 
 use tokio_postgres::NoTls;
@@ -28,8 +29,10 @@ CREATE INDEX IF NOT EXISTS idx_user_token ON customer (token);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let (client, connection) =
-        tokio_postgres::connect("postgres://postgres:pswd@localhost:5432/memryze", NoTls).await?;
+    let pg_uri = env::var("POSTGRES_URI")
+        .unwrap_or("postgres://postgres:pswd@localhost:5432/memryze".to_owned());
+
+    let (client, connection) = tokio_postgres::connect(&pg_uri, NoTls).await?;
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
@@ -43,20 +46,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .prepare("INSERT INTO qa (q, a, customer_id) VALUES ($1, $2, $3)")
         .await?;
 
-    let err = client
+    let res = client
         .execute(
             &insert_qa_stmt,
             &[&"is this place free?", &"onks tä paikka vapaa?", &1i64],
         )
-        .await
-        .unwrap_err();
+        .await;
 
-    // println!(
-    //     "duplicate insert error: code={:?}, src={:?}",
-    //     err.code(),
-    //     err.as_db_error()
-    // );
-    println!("{err:?}");
+    if let Err(err) = res {
+        // err.code();
+        // err.as_db_error();
+        println!("Inserting qa failed: {err:?}");
+    }
 
     Ok(())
 }

@@ -20,10 +20,10 @@ struct Args {
 
     #[arg(
         long,
-        help = "Postgres connection address",
+        help = "Server connection address",
         default_value = "127.0.0.1:8080"
     )]
-    pg_addr: String,
+    server_addr: String,
 
     #[command(subcommand)]
     command: Commands,
@@ -59,7 +59,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_line_number(true)
         .init();
 
-    let mut stream = TcpStream::connect(args.pg_addr).await?;
+    let mut stream = TcpStream::connect(args.server_addr).await?;
 
     let mut in_buf = vec![0u8; 512];
     let mut prim_out_buf = vec![0u8; 512];
