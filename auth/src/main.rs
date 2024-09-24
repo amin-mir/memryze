@@ -8,9 +8,8 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let pg_uri = env::args()
-        .nth(1)
-        .unwrap_or("postgres://postgres:pswd@localhost:5432/memryze".to_string());
+    let pg_uri = env::var("POSTGRES_URI")
+        .unwrap_or("postgres://postgres:pswd@localhost:5432/memryze".to_owned());
 
     tracing_subscriber::fmt()
         .with_env_filter(
