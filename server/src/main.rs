@@ -1,3 +1,4 @@
+use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -17,17 +18,13 @@ use prot;
 struct Args {
     #[arg(short, long, default_value = "127.0.0.1:8080")]
     addr: String,
-
-    #[arg(
-        short,
-        long,
-        default_value = "postgres://postgres:pswd@localhost:5432/memryze"
-    )]
-    pg_uri: String,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let pg_uri = env::var("POSTGRES_URI")
+        .unwrap_or("postgres://postgres:pswd@localhost:5432/memryze".to_owned());
+
     let args = Args::parse();
 
     tracing_subscriber::fmt()
@@ -39,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
         .with_line_number(true)
         .init();
 
-    let (pg_client, pg_conn) = tokio_postgres::connect(&args.pg_uri, NoTls).await?;
+    let (pg_client, pg_conn) = tokio_postgres::connect(&pg_uri, NoTls).await?;
 
     tokio::spawn(async move {
         if let Err(e) = pg_conn.await {
