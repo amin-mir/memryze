@@ -3,7 +3,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use clap::Parser;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_postgres::NoTls;
 use tracing::{debug, error, info, info_span, Instrument};
@@ -13,19 +12,12 @@ use memryze::db::PgClient;
 use message::{Message, QA};
 use prot;
 
-#[derive(Parser, Debug)]
-#[command(version)]
-struct Args {
-    #[arg(short, long, default_value = "127.0.0.1:8080")]
-    addr: String,
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let server_addr = env::var("ADDR").unwrap_or("127.0.0.1:8080".to_owned());
+
     let pg_uri = env::var("POSTGRES_URI")
         .unwrap_or("postgres://postgres:pswd@localhost:5432/memryze".to_owned());
-
-    let args = Args::parse();
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -47,7 +39,8 @@ async fn main() -> anyhow::Result<()> {
     let pg_client = PgClient::prepare(pg_client).await?;
     let pg_client = Arc::new(pg_client);
 
-    let listener = TcpListener::bind(args.addr).await?;
+    let listener = TcpListener::bind(&server_addr).await?;
+    info!(server_addr, "Server started");
 
     loop {
         let (stream, addr) = listener.accept().await?;
