@@ -13,7 +13,6 @@ use tracing::error;
 
 use message::{Message, QA};
 
-const ADDR: &str = "127.0.0.1:8080";
 const VAULT_CLIENT: &str = "ApiKeyClient";
 const VAULT_API_KEY: &str = "ApiKey";
 
@@ -66,19 +65,16 @@ pub fn run() {
             let snapshot = SnapshotPath::from_path(data_dir.join("vault.hold"));
             let enc_key = get_vault_encryption_key(&salt)?;
 
-            println!("13");
             let stronghold = Stronghold::default();
 
             // When a snapshot file exists from before, we attempt to load a client from it,
             // read the API Key and connect to the backend already.
-            println!("1");
             let (vault_cli, stream) = if snapshot.exists() {
                 stronghold.load_snapshot(&enc_key, &snapshot)?;
                 let vault_cli = stronghold.load_client(VAULT_CLIENT)?;
                 // let vault_cli =
                 //     stronghold.load_client_from_snapshot(VAULT_CLIENT, &enc_key, &snapshot)?;
 
-                println!("2");
                 match vault_cli.store().get(VAULT_API_KEY.as_bytes())? {
                     Some(api_key) => {
                         println!("read the api key from vault");
@@ -136,15 +132,13 @@ fn get_vault_encryption_key(salt: &[u8]) -> anyhow::Result<KeyProvider> {
     let password = std::option_env!("VAULT_PASSWORD").unwrap_or("secret vault password");
 
     let mut encryption_key = vec![0u8; 32];
-    println!("11");
     Argon2::default().hash_password_into(password.as_bytes(), salt, &mut encryption_key)?;
 
-    println!("12");
     KeyProvider::try_from(encryption_key).map_err(Into::into)
 }
 
 async fn connect(in_buf: &mut [u8], out_buf: &mut [u8], token: &str) -> anyhow::Result<TcpStream> {
-    let mut stream = TcpStream::connect(ADDR).await?;
+    let mut stream = TcpStream::connect(get_server_addr()).await?;
 
     let handshake = Message::Handshake { version: 1, token };
 
@@ -158,6 +152,10 @@ async fn connect(in_buf: &mut [u8], out_buf: &mut [u8], token: &str) -> anyhow::
     };
 
     Ok(stream)
+}
+
+fn get_server_addr() -> &'static str {
+    return std::option_env!("SERVER_ADDR").unwrap_or("127.0.0.1:8080");
 }
 
 #[tauri::command]

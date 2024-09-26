@@ -21,7 +21,7 @@ impl PgClient {
             .await?;
 
         let insert_qa_stmt = client
-            .prepare("INSERT INTO qa (q, a) VALUES ($1, $2)")
+            .prepare("INSERT INTO qa (q, a, customer_id) VALUES ($1, $2, $3)")
             .await?;
 
         let get_quiz_stmt = client

@@ -46,6 +46,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .prepare("INSERT INTO qa (q, a, customer_id) VALUES ($1, $2, $3)")
         .await?;
 
+    // TODO: insert a customer before this otherwise this will fail.
+
     let res = client
         .execute(
             &insert_qa_stmt,

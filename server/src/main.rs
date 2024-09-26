@@ -58,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
                 match handle(stream, addr, pg_client).await {
                     Ok(()) => (),
                     Err(err @ prot::Error::StreamClosed) => debug!(%err),
-                    Err(err) => error!(?err),
+                    Err(err) => error!(%err),
                 }
             }
             .instrument(info_span!("handle", %addr)),
