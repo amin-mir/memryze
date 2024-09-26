@@ -2,15 +2,6 @@
 Are you learning a new language? Want an efficient way for memorizing the countless new words, phrases
 and sentences you encounter every day? Give this a try!
 
-### TODO
-* Use `env!` macro to read the server URL (localhost if value is empty). `env!` evaluates the 
-env var in compile time and replaces it with a `&'static str`.
-* Change the client to ask for login token and store in secure local storage
+## Download and Install
 
-### Useful Queries for testing
-
-```sql
--- reset last_shown_at for all qa.
-UPDATE qa
-SET last_shown_at = NULL;
-```
+You can download the latest version of the app from the [releases page](https://github.com/amin-mir/memryze/releases).
