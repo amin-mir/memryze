@@ -14,8 +14,16 @@ stop-postgres:
 init-db:
 	cargo run --bin db
 
-run-memryze:
+run-srv-dev:
 	cargo run --bin memryze
+
+build-srv-prd:
+	cargo build --release --bin memryze
+
+run-srv-prd: build-srv-prd
+	./target/release/memryze
 
 run-client:
 	cargo run --bin client
+
+
