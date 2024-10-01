@@ -15,9 +15,13 @@ init-db:
 	cargo run --bin db
 
 run-srv-dev:
-	cargo run --bin memryze
+	RUST_LOG=info cargo run --bin memryze
 
 build-srv-prd:
+	# Make sure you set the env vars:
+	# export ADDR="0.0.0.0:9871"
+	# export POSTGRES_URI="postgres://memryze:oosata7Vou5roNge@localhost:5432/memryze"
+	# export RUST_LOG="info"
 	cargo build --release --bin memryze
 
 run-srv-prd: build-srv-prd

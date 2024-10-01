@@ -101,8 +101,41 @@ textarea:focus {
 .actions {
   display: flex;
   flex-direction: row;
-  justify-content: left;
+  justify-content: center;
+  align-items: center;
   gap: 1em;
+  width: auto;
+}
+
+.actions-margined {
+  margin-left: 2em;
+}
+
+.checkmark {
+  display: inline-block;
+  color: green;
+  font-size: 1em;
+  font-weight: bold;
+  visibility: hidden;
+}
+
+.checkmark.hidden {
+  visibility: hidden;
+}
+
+.checkmark.visible {
+  visibility: visible;
+  animation: fade-out 1.4s forwards;
+}
+
+@keyframes fade-out {
+  0% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
 
 .submit-button {

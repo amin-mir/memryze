@@ -15,7 +15,7 @@ enum NavbarSelected {
 
 #[function_component(App)]
 pub fn app() -> Html {
-    let navbar_selected = use_state(|| NavbarSelected::Quiz);
+    let navbar_selected = use_state(|| NavbarSelected::Submit);
     let fetched_qas = use_state(|| Vec::<QA>::new());
     let current_qa_idx = use_state(|| 0);
     let status_message = use_state(|| String::from(""));

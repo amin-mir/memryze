@@ -1,12 +1,13 @@
 use std::fs::{self, File};
 use std::io::Read;
+use std::path::PathBuf;
 use std::str;
 
 use argon2::Argon2;
 use iota_stronghold::{Client as StrongholdClient, KeyProvider, SnapshotPath, Stronghold};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use tauri::{Builder, Manager, State};
+use tauri::{App, Builder, Manager, State};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tracing::error;
@@ -40,7 +41,7 @@ type AppState = Mutex<AppStateInner>;
 pub fn run() {
     Builder::default()
         .setup(|app| {
-            let data_dir = app.handle().path().app_data_dir().unwrap();
+            let data_dir = get_data_dir(app);
             let salt_path = data_dir.join("salt.txt");
 
             let salt = if !salt_path.exists() {
@@ -58,8 +59,8 @@ pub fn run() {
             println!("salt len={}", salt.len());
 
             // Initialize network buffers.
-            let mut in_buf = vec![0u8; 512];
-            let mut out_buf = vec![0u8; 512];
+            let mut in_buf = vec![0u8; 2048];
+            let mut out_buf = vec![0u8; 2048];
 
             // Setup stronghold.
             let snapshot = SnapshotPath::from_path(data_dir.join("vault.hold"));
@@ -120,6 +121,15 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn get_data_dir(app: &mut App) -> PathBuf {
+    let build_type = std::option_env!("TAURI_BUILD").unwrap_or("dev");
+    if build_type == "dev" {
+        PathBuf::from(".")
+    } else {
+        app.handle().path().app_data_dir().unwrap()
+    }
 }
 
 fn generate_salt() -> [u8; 16] {

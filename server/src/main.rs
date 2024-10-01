@@ -65,7 +65,7 @@ async fn handle(
     pg_client: Arc<PgClient>,
 ) -> prot::Result<()> {
     let mut in_buf = vec![0u8; 512];
-    let mut prim_out_buf = vec![0u8; 512];
+    let mut prim_out_buf = vec![0u8; 2048];
     let mut sec_out_buf = vec![0u8; 2048];
 
     let first_msg = prot::read_msg(&mut stream, &mut in_buf).await?;
@@ -89,6 +89,7 @@ async fn handle(
         let msg = prot::read_msg(&mut stream, &mut in_buf).await?;
 
         match msg {
+            // TODO: ensure q and a are not empty.
             Message::AddQA { q, a } => match pg_client.insert_qa(customer_id, &q, &a).await {
                 Ok(_) => {
                     prot::write_msg(&mut stream, &mut prim_out_buf, &Message::AddQAResp).await?
