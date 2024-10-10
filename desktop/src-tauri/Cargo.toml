@@ -12,12 +12,12 @@ name = "desktop_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0.0-rc", features = [ "config-toml" ] }
+tauri-build = { version = "2.0.0", features = [ "config-toml" ] }
 
 [dependencies]
 anyhow = "1.0"
-tauri = { version = "2.0.0-rc", features = [ "config-toml" ] }
-tauri-plugin-shell = "2.0.0-rc"
+tauri = { version = "^2.0.0", features = [ "config-toml" ] }
+tauri-plugin-shell = "^2.0.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version="1", features = ["net", "rt", "sync"] }

@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::PathBuf;
@@ -7,9 +8,10 @@ use argon2::Argon2;
 use iota_stronghold::{Client as StrongholdClient, KeyProvider, SnapshotPath, Stronghold};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use tauri::{App, Builder, Manager, State};
+use tauri::{App, AppHandle, Builder, Emitter, Manager, State};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio::time::{self, Duration};
 use tracing::error;
 
 use message::{Message, QA};
@@ -30,8 +32,20 @@ struct AppStateInner {
 }
 
 impl AppStateInner {
-    fn split_borrow_mut(&mut self) -> (&mut Vec<u8>, &mut Vec<u8>, Option<&mut TcpStream>) {
-        (&mut self.in_buf, &mut self.out_buf, self.stream.as_mut())
+    fn split_borrow_mut(
+        &mut self,
+    ) -> (
+        &mut Vec<u8>,
+        &mut Vec<u8>,
+        &mut Option<TcpStream>,
+        &mut StrongholdClient,
+    ) {
+        (
+            &mut self.in_buf,
+            &mut self.out_buf,
+            &mut self.stream,
+            &mut self.vault_cli,
+        )
     }
 }
 
@@ -147,6 +161,34 @@ fn get_vault_encryption_key(salt: &[u8]) -> anyhow::Result<KeyProvider> {
     KeyProvider::try_from(encryption_key).map_err(Into::into)
 }
 
+async fn retry_connect(
+    in_buf: &mut [u8],
+    out_buf: &mut [u8],
+    token: &str,
+) -> anyhow::Result<TcpStream> {
+    let bkf_max = Duration::from_secs(4);
+    let mut bkf = Duration::from_millis(100);
+    let mut retries = 0;
+
+    loop {
+        match connect(in_buf, out_buf, token).await {
+            Ok(stream) => return Ok(stream),
+            Err(e) => {
+                if retries == 20 {
+                    return Err(e);
+                }
+                retries += 1;
+            }
+        }
+
+        time::sleep(bkf).await;
+        println!("#[{}] Retrying connection...", retries);
+        if bkf < bkf_max {
+            bkf = min(bkf * 2, bkf_max);
+        }
+    }
+}
+
 async fn connect(in_buf: &mut [u8], out_buf: &mut [u8], token: &str) -> anyhow::Result<TcpStream> {
     let mut stream = TcpStream::connect(get_server_addr()).await?;
 
@@ -179,15 +221,13 @@ async fn update_api_key(state: State<'_, AppState>, api_key: String) -> Result<(
     let mut state = state.lock().await;
 
     // Connect to server with this API Key and store the TcpStream in State.
-    let new_stream = {
-        let (in_buf, out_buf, _stream) = state.split_borrow_mut();
+    let (in_buf, out_buf, stream, _) = state.split_borrow_mut();
 
-        connect(in_buf, out_buf, &api_key)
-            .await
-            .map_err(|e| e.to_string())?
-    };
+    let new_stream = retry_connect(in_buf, out_buf, &api_key)
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let _ = state.stream.insert(new_stream);
+    let _ = stream.insert(new_stream);
 
     // Store the API Key in vault and commit for later use.
     state
@@ -209,31 +249,24 @@ async fn update_api_key(state: State<'_, AppState>, api_key: String) -> Result<(
 }
 
 #[tauri::command]
-async fn add_qa(state: State<'_, AppState>, msg: Message<'_>) -> Result<()> {
+async fn add_qa(app: AppHandle, state: State<'_, AppState>, msg: Message<'_>) -> Result<()> {
+    app.emit("reconnecting", ()).map_err(|e| e.to_string())?;
     let Message::AddQA { .. } = msg else {
         return Err(format!("expected AddQA, got {:?}", msg));
     };
 
     let mut state = state.lock().await;
 
-    let (in_buf, out_buf, stream) = state.split_borrow_mut();
-    let Some(stream) = stream else {
-        return Err("Not connected to server".to_owned());
-    };
+    let (in_buf, out_buf, stream, vault_cli) = state.split_borrow_mut();
 
-    match prot::write_msg(stream, out_buf, &msg).await {
-        Ok(_) => (),
-        Err(e) => return Err(e.to_string()),
-    }
-
-    let resp = match prot::read_msg(stream, in_buf).await {
-        Ok(msg) => msg,
-        Err(e) => return Err(e.to_string()),
+    let handle_resp = |resp: &Message| match resp {
+        Message::AddQAResp => Ok(()),
+        _ => anyhow::bail!("expected AddQAResp, got {:?}", resp),
     };
+    request_reconnect(stream, in_buf, out_buf, vault_cli, &msg, handle_resp)
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let Message::AddQAResp = resp else {
-        return Err(format!("expected AddQAResp, got {:?}", resp));
-    };
     Ok(())
 }
 
@@ -245,29 +278,18 @@ async fn get_quiz(state: State<'_, AppState>) -> Result<Vec<QA>> {
 
     let mut state = state.lock().await;
 
-    let (in_buf, out_buf, stream) = state.split_borrow_mut();
-    let Some(stream) = stream else {
-        return Err("Not connected to server".to_owned());
-    };
+    let (in_buf, out_buf, stream, vault_cli) = state.split_borrow_mut();
 
-    match prot::write_msg(stream, out_buf, &msg).await {
-        Ok(_) => (),
-        Err(e) => return Err(e.to_string()),
-    }
+    let handle_resp = |resp: &Message| {
+        let Message::Quiz { count, qas_bytes } = resp else {
+            anyhow::bail!("expected Quiz, got {:?}", resp);
+        };
 
-    let resp = match prot::read_msg(stream, in_buf).await {
-        Ok(msg) => msg,
-        Err(e) => return Err(e.to_string()),
+        prot::deser_from_bytes(qas_bytes, *count, &mut qas).map_err(Into::into)
     };
-
-    let Message::Quiz { count, qas_bytes } = resp else {
-        return Err(format!("expected Quiz, got {:?}", resp));
-    };
-
-    match prot::deser_from_bytes(qas_bytes, count, &mut qas) {
-        Ok(_) => (),
-        Err(e) => return Err(e.to_string()),
-    };
+    request_reconnect(stream, in_buf, out_buf, vault_cli, &msg, handle_resp)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(qas)
 }
@@ -280,24 +302,68 @@ async fn review_qa(state: State<'_, AppState>, msg: Message<'_>) -> Result<()> {
 
     let mut state = state.lock().await;
 
-    let (in_buf, out_buf, stream) = state.split_borrow_mut();
-    let Some(stream) = stream else {
-        return Err("Not connected to server".to_owned());
-    };
+    let (in_buf, out_buf, stream, vault_cli) = state.split_borrow_mut();
 
-    match prot::write_msg(stream, out_buf, &msg).await {
-        Ok(_) => (),
-        Err(e) => return Err(e.to_string()),
-    }
-
-    let resp = match prot::read_msg(stream, in_buf).await {
-        Ok(msg) => msg,
-        Err(e) => return Err(e.to_string()),
+    let handle_resp = |resp: &Message| match resp {
+        Message::ReviewQAResp => Ok(()),
+        _ => anyhow::bail!("expected ReviewQAResp, got {:?}", resp),
     };
-
-    let Message::ReviewQAResp = resp else {
-        return Err(format!("expected ReviewQAResp, got {:?}", resp));
-    };
+    request_reconnect(stream, in_buf, out_buf, vault_cli, &msg, handle_resp)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+// request_reconnect will send a request to the server with the provided message,
+// and if it detects disconnection will attempt to re-establish the connection
+// using retry_connect and tries the request one more time afterwards.
+async fn request_reconnect<H>(
+    stream: &mut Option<TcpStream>,
+    in_buf: &mut [u8],
+    out_buf: &mut [u8],
+    vault_cli: &StrongholdClient,
+    msg: &Message<'_>,
+    mut handle: H,
+) -> anyhow::Result<()>
+where
+    H: FnMut(&Message<'_>) -> anyhow::Result<()>,
+{
+    let req_res = request(stream, in_buf, out_buf, &msg).await;
+    if let Ok(resp) = req_res {
+        return handle(&resp);
+    }
+
+    match req_res.unwrap_err() {
+        prot::Error::StreamClosed => {
+            println!("Disconnect detected");
+            let api_key = get_api_key(vault_cli)?;
+            let new_stream = retry_connect(in_buf, out_buf, &api_key).await?;
+            _ = stream.insert(new_stream);
+            match request(stream, in_buf, out_buf, &msg).await {
+                Ok(resp) => handle(&resp),
+                Err(e) => Err(e.into()),
+            }
+        }
+        e => Err(e.into()),
+    }
+}
+
+fn get_api_key(vault_cli: &StrongholdClient) -> anyhow::Result<String> {
+    let api_key = vault_cli.store().get(VAULT_API_KEY.as_bytes())?;
+    let Some(api_key) = api_key else {
+        anyhow::bail!("Missing API Key in vault")
+    };
+    String::from_utf8(api_key).map_err(Into::into)
+}
+
+async fn request<'a>(
+    stream: &mut Option<TcpStream>,
+    in_buf: &'a mut [u8],
+    out_buf: &mut [u8],
+    msg: &Message<'_>,
+) -> anyhow::Result<Message<'a>, prot::Error> {
+    let stream = stream.as_mut().ok_or(prot::Error::StreamClosed)?;
+    prot::write_msg(stream, out_buf, &msg).await?;
+    prot::read_msg(stream, in_buf).await
 }

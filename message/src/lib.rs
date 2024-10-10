@@ -23,3 +23,9 @@ pub struct QA {
     pub q: String,
     pub a: String,
 }
+
+#[derive(Clone, Serialize)]
+pub enum Connection {
+    Connected,
+    Reconnecting,
+}
